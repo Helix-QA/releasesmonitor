@@ -39,8 +39,10 @@ LOGIN_1C=твой_логин_1c
 PASSWORD_1C=твой_пароль_1c
 TELEGRAM_BOT_TOKEN=твой_токен_бота
 TELEGRAM_CHAT_ID=твой_chat_id
+```
 
 
+```bash
 # 1. Склонируй репозиторий
 git clone https://github.com/Helix-QA/releasesmonitor.git
 cd releasesmonitor
@@ -53,3 +55,4 @@ cp .env
 docker compose up -d --force-recreate
 
 
+```
