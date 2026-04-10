@@ -32,14 +32,6 @@
 
 
 
-**Пример файла .env**
-
-```bash
-LOGIN_1C=твой_логин_1c
-PASSWORD_1C=твой_пароль_1c
-TELEGRAM_BOT_TOKEN=твой_токен_бота
-TELEGRAM_CHAT_ID=твой_chat_id
-```
 
 
 ```bash
@@ -54,5 +46,12 @@ cp .env
 # 3. Запусти
 docker compose up -d --force-recreate
 
+```
 
+**Пример файла .env**
+```bash
+LOGIN_1C=твой_логин_1c
+PASSWORD_1C=твой_пароль_1c
+TELEGRAM_BOT_TOKEN=твой_токен_бота
+TELEGRAM_CHAT_ID=твой_chat_id
 ```
