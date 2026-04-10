@@ -2,22 +2,25 @@ version: "3.9"
 
 services:
   1c-monitor:
+    image: mishan358/1c-releases-monitor:latest     # ← обязательно!
     build: .
     container_name: 1c-releases-monitor
     restart: unless-stopped
-    
-    # Загружаем все переменные из .env
-    env_file:
-      - .env
-    
+
+    # Передаём секреты из GitHub Actions
+    environment:
+      - LOGIN_1C=${LOGIN_1C}
+      - PASSWORD_1C=${PASSWORD_1C}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - PYTHONUNBUFFERED=1
+
     volumes:
       - ./data:/data
-    
+
     # === Логирование ===
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "5"
-    environment:
-      - PYTHONUNBUFFERED=1
