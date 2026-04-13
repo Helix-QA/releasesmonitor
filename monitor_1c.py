@@ -19,9 +19,9 @@ JENKINS_JOB_NAME = os.getenv("JENKINS_JOB_NAME")
 JENKINS_USER = os.getenv("JENKINS_USER")
 JENKINS_API_TOKEN = os.getenv("JENKINS_API_TOKEN")
 
-# Соответствие продукта → параметр, который передаём в Jenkins
+# Соответствие продукта → параметр Jenkins
 JENKINS_PRODUCT_MAP = {
-    "Фитнес клуб КОРП, редакция 4.0": "fintessCorp",      
+    "Фитнес клуб КОРП, редакция 4.0": "fintessCorp",
     "Салон красоты, редакция 3.0": "salon30",
     "1С:Предприятие 8. SPA-Салон, редакция 3.0": "SpaSalon3",
 }
@@ -69,7 +69,7 @@ def trigger_jenkins_job(product_name: str, new_version: str):
     """Запускает Jenkins job только для нужных продуктов"""
     jenkins_param = JENKINS_PRODUCT_MAP.get(product_name)
     if not jenkins_param:
-        return  # это не тот продукт
+        return
 
     if not JENKINS_URL or not JENKINS_JOB_NAME:
         print(f"⚠️  Jenkins не настроен для продукта {product_name}")
@@ -77,9 +77,8 @@ def trigger_jenkins_job(product_name: str, new_version: str):
 
     url = f"{JENKINS_URL.rstrip('/')}/job/{JENKINS_JOB_NAME}/buildWithParameters"
 
-    # ← Здесь можно поменять имена параметров, если в твоей джобе они называются по-другому
     params = {
-        "product": jenkins_param,   # fintessCorp / salon30 / SpaSalon3
+        "product": jenkins_param,
         "version": new_version
     }
 
@@ -92,7 +91,6 @@ def trigger_jenkins_job(product_name: str, new_version: str):
             send_telegram(f"🚀 <b>Jenkins job запущена!</b>\nПродукт: <b>{product_name}</b>\nВерсия: <code>{new_version}</code>")
         else:
             print(f"❌ Jenkins ответил {resp.status_code}")
-            print(resp.text[:300])
     except Exception as e:
         print(f"❌ Ошибка вызова Jenkins: {e}")
 
@@ -110,9 +108,10 @@ def save_versions(versions):
     with open(VERSIONS_FILE, "w", encoding="utf-8") as f:
         json.dump(versions, f, ensure_ascii=False, indent=2)
 
+# ===================== РАБОЧИЙ ПАРСЕР =====================
 def extract_latest_version(full_text, product_name):
     pattern = re.compile(
-        rf'{re.escape(product_name)}\s*[^0-9]*?(\d+\.\d+(?:\.\d+){{1,3}})',
+        rf'{re.escape(product_name)}.*?(\d+\.\d+(?:\.\d+){{1,4}})',
         re.IGNORECASE | re.DOTALL
     )
     matches = pattern.findall(full_text)
@@ -120,7 +119,34 @@ def extract_latest_version(full_text, product_name):
 
 # ===================== АВТОРИЗАЦИЯ =====================
 print("🔄 Авторизация на 1c.ru...")
-# ... (весь блок авторизации без изменений) ...
+resp = session.get("https://releases.1c.ru/total", allow_redirects=True)
+
+if "login.1c.ru" in resp.url:
+    soup = BeautifulSoup(resp.text, "html.parser")
+    form = soup.find("form")
+    action = form.get("action") if form else None
+    if action and not action.startswith("http"):
+        action = "https://login.1c.ru" + action
+
+    execution_input = soup.find("input", {"name": "execution"})
+    execution = execution_input.get("value") if execution_input else ""
+
+    payload = {
+        "username": LOGIN,
+        "password": PASSWORD,
+        "execution": execution,
+        "_eventId": "submit",
+        "rememberMe": "true"
+    }
+
+    login_resp = session.post(action or resp.url, data=payload, allow_redirects=True)
+    if "login.1c.ru" not in login_resp.url:
+        print("✅ Авторизация успешна!")
+    else:
+        print("❌ Ошибка авторизации! Проверьте логин и пароль в .env")
+        exit(1)
+else:
+    print("✅ Уже авторизованы")
 
 # ===================== ОСНОВНОЙ ЦИКЛ =====================
 print(f"🚀 Мониторинг {len(PRODUCTS)} продуктов + Jenkins запущен в Docker.\n")
@@ -149,7 +175,6 @@ while True:
                     message = f"<b>🔥 Выпущен новый релиз 1С!</b>\n\n<b>{product}</b>\nНовая: <code>{new_version}</code>\nСтарая: <code>{old_version or '—'}</code>"
                     send_telegram(message)
                     
-                    # ← НОВОЕ: запуск Jenkins
                     if product in JENKINS_PRODUCT_MAP:
                         trigger_jenkins_job(product, new_version)
                     
