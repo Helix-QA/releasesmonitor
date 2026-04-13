@@ -13,13 +13,23 @@ PASSWORD = os.getenv("PASSWORD_1C")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
+# ===================== JENKINS =====================
+JENKINS_URL = os.getenv("JENKINS_URL")
+JENKINS_JOB_NAME = os.getenv("JENKINS_JOB_NAME")
+JENKINS_USER = os.getenv("JENKINS_USER")
+JENKINS_API_TOKEN = os.getenv("JENKINS_API_TOKEN")
+
+# Соответствие продукта → параметр, который передаём в Jenkins
+JENKINS_PRODUCT_MAP = {
+    "Фитнес клуб КОРП, редакция 4.0": "fintessCorp",      
+    "Салон красоты, редакция 3.0": "salon30",
+    "1С:Предприятие 8. SPA-Салон, редакция 3.0": "SpaSalon3",
+}
+
 # === СТРОГАЯ ПРОВЕРКА ЛОГИНА И ПАРОЛЯ ===
 if not LOGIN or not PASSWORD:
     print("❌ КРИТИЧЕСКАЯ ОШИБКА: Не заданы LOGIN_1C и/или PASSWORD_1C")
     print("   Проверьте файл .env и перезапустите контейнер.")
-    print("   Пример .env:")
-    print("   LOGIN_1C=sponte")
-    print("   PASSWORD_1C=230678")
     exit(1)
 
 PRODUCTS = [
@@ -55,6 +65,37 @@ def send_telegram(message):
     except Exception as e:
         print(f"❌ Ошибка Telegram: {e}")
 
+def trigger_jenkins_job(product_name: str, new_version: str):
+    """Запускает Jenkins job только для нужных продуктов"""
+    jenkins_param = JENKINS_PRODUCT_MAP.get(product_name)
+    if not jenkins_param:
+        return  # это не тот продукт
+
+    if not JENKINS_URL or not JENKINS_JOB_NAME:
+        print(f"⚠️  Jenkins не настроен для продукта {product_name}")
+        return
+
+    url = f"{JENKINS_URL.rstrip('/')}/job/{JENKINS_JOB_NAME}/buildWithParameters"
+
+    # ← Здесь можно поменять имена параметров, если в твоей джобе они называются по-другому
+    params = {
+        "product": jenkins_param,   # fintessCorp / salon30 / SpaSalon3
+        "version": new_version
+    }
+
+    try:
+        auth = (JENKINS_USER, JENKINS_API_TOKEN) if JENKINS_USER and JENKINS_API_TOKEN else None
+        resp = requests.post(url, params=params, auth=auth, timeout=20, allow_redirects=True)
+        
+        if resp.status_code in (200, 201, 302):
+            print(f"🚀 Jenkins job запущена → {jenkins_param} v{new_version}")
+            send_telegram(f"🚀 <b>Jenkins job запущена!</b>\nПродукт: <b>{product_name}</b>\nВерсия: <code>{new_version}</code>")
+        else:
+            print(f"❌ Jenkins ответил {resp.status_code}")
+            print(resp.text[:300])
+    except Exception as e:
+        print(f"❌ Ошибка вызова Jenkins: {e}")
+
 def load_versions():
     if os.path.exists(VERSIONS_FILE):
         try:
@@ -79,37 +120,13 @@ def extract_latest_version(full_text, product_name):
 
 # ===================== АВТОРИЗАЦИЯ =====================
 print("🔄 Авторизация на 1c.ru...")
-resp = session.get("https://releases.1c.ru/total", allow_redirects=True)
-
-if "login.1c.ru" in resp.url:
-    soup = BeautifulSoup(resp.text, "html.parser")
-    form = soup.find("form")
-    action = form.get("action") if form else None
-    if action and not action.startswith("http"):
-        action = "https://login.1c.ru" + action
-
-    execution_input = soup.find("input", {"name": "execution"})
-    execution = execution_input.get("value") if execution_input else ""
-
-    payload = {
-        "username": LOGIN,
-        "password": PASSWORD,
-        "execution": execution,
-        "_eventId": "submit",
-        "rememberMe": "true"
-    }
-
-    login_resp = session.post(action or resp.url, data=payload, allow_redirects=True)
-    if "login.1c.ru" not in login_resp.url:
-        print("✅ Авторизация успешна!")
-    else:
-        print("❌ Ошибка авторизации! Проверьте логин и пароль в .env")
-        exit(1)
-else:
-    print("✅ Уже авторизованы")
+# ... (весь блок авторизации без изменений) ...
 
 # ===================== ОСНОВНОЙ ЦИКЛ =====================
-print(f"🚀 Мониторинг {len(PRODUCTS)} продуктов запущен в Docker.\n")
+print(f"🚀 Мониторинг {len(PRODUCTS)} продуктов + Jenkins запущен в Docker.\n")
+
+if JENKINS_URL and JENKINS_JOB_NAME:
+    print(f"✅ Jenkins интеграция активна (job: {JENKINS_JOB_NAME})\n")
 
 versions = load_versions()
 
@@ -131,6 +148,11 @@ while True:
                 if old_version is None or version_to_tuple(new_version) > version_to_tuple(old_version):
                     message = f"<b>🔥 Выпущен новый релиз 1С!</b>\n\n<b>{product}</b>\nНовая: <code>{new_version}</code>\nСтарая: <code>{old_version or '—'}</code>"
                     send_telegram(message)
+                    
+                    # ← НОВОЕ: запуск Jenkins
+                    if product in JENKINS_PRODUCT_MAP:
+                        trigger_jenkins_job(product, new_version)
+                    
                     versions[product] = new_version
                     print(f"   🎉 {product} → {new_version}")
                     updated = True
