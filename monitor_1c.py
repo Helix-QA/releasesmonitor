@@ -13,19 +13,6 @@ PASSWORD = os.getenv("PASSWORD_1C")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# ===================== JENKINS =====================
-JENKINS_URL = os.getenv("JENKINS_URL")
-JENKINS_JOB_NAME = os.getenv("JENKINS_JOB_NAME")
-JENKINS_USER = os.getenv("JENKINS_USER")
-JENKINS_API_TOKEN = os.getenv("JENKINS_API_TOKEN")
-
-# Соответствие продукта → параметр Jenkins
-JENKINS_PRODUCT_MAP = {
-    "Фитнес клуб КОРП, редакция 4.0": "fintessCorp",
-    "Салон красоты, редакция 3.0": "salon30",
-    "1С:Предприятие 8. SPA-Салон, редакция 3.0": "SpaSalon3",
-}
-
 # === СТРОГАЯ ПРОВЕРКА ЛОГИНА И ПАРОЛЯ ===
 if not LOGIN or not PASSWORD:
     print("❌ КРИТИЧЕСКАЯ ОШИБКА: Не заданы LOGIN_1C и/или PASSWORD_1C")
@@ -64,35 +51,6 @@ def send_telegram(message):
         print(f"✅ Отправлено в Telegram")
     except Exception as e:
         print(f"❌ Ошибка Telegram: {e}")
-
-def trigger_jenkins_job(product_name: str, new_version: str):
-    """Запускает Jenkins job только для нужных продуктов"""
-    jenkins_param = JENKINS_PRODUCT_MAP.get(product_name)
-    if not jenkins_param:
-        return
-
-    if not JENKINS_URL or not JENKINS_JOB_NAME:
-        print(f"⚠️  Jenkins не настроен для продукта {product_name}")
-        return
-
-    url = f"{JENKINS_URL.rstrip('/')}/job/{JENKINS_JOB_NAME}/buildWithParameters"
-
-    params = {
-        "product": jenkins_param,
-        "version": new_version
-    }
-
-    try:
-        auth = (JENKINS_USER, JENKINS_API_TOKEN) if JENKINS_USER and JENKINS_API_TOKEN else None
-        resp = requests.post(url, params=params, auth=auth, timeout=20, allow_redirects=True)
-        
-        if resp.status_code in (200, 201, 302):
-            print(f"🚀 Jenkins job запущена → {jenkins_param} v{new_version}")
-            send_telegram(f"🚀 <b>Jenkins job запущена!</b>\nПродукт: <b>{product_name}</b>\nВерсия: <code>{new_version}</code>")
-        else:
-            print(f"❌ Jenkins ответил {resp.status_code}")
-    except Exception as e:
-        print(f"❌ Ошибка вызова Jenkins: {e}")
 
 def load_versions():
     if os.path.exists(VERSIONS_FILE):
@@ -149,10 +107,7 @@ else:
     print("✅ Уже авторизованы")
 
 # ===================== ОСНОВНОЙ ЦИКЛ =====================
-print(f"🚀 Мониторинг {len(PRODUCTS)} продуктов + Jenkins запущен в Docker.\n")
-
-if JENKINS_URL and JENKINS_JOB_NAME:
-    print(f"✅ Jenkins интеграция активна (job: {JENKINS_JOB_NAME})\n")
+print(f"🚀 Мониторинг {len(PRODUCTS)} продуктов запущен в Docker.\n")
 
 versions = load_versions()
 
@@ -174,9 +129,6 @@ while True:
                 if old_version is None or version_to_tuple(new_version) > version_to_tuple(old_version):
                     message = f"<b>🔥 Выпущен новый релиз 1С!</b>\n\n<b>{product}</b>\nНовая: <code>{new_version}</code>\nСтарая: <code>{old_version or '—'}</code>"
                     send_telegram(message)
-                    
-                    if product in JENKINS_PRODUCT_MAP:
-                        trigger_jenkins_job(product, new_version)
                     
                     versions[product] = new_version
                     print(f"   🎉 {product} → {new_version}")
